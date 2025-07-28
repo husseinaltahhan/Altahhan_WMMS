@@ -1,0 +1,23 @@
+esp32 publishes: 
+-> counter: boards/espname/counter #used as a daily counter for unit detections
+-> status: boards/espname/status #used to communicate status of the board (online, offline, overheating, idle, etc..)
+-> state before shutdown: boards/espname/last_state #last state the board was in before sudden shutdown
+-> temp: boards/espname/temp #used as a channel to communicate overheating
+-> error: boards/espname/error #used to communicate any errors
+-> update acknowledgement: boards/espname/update_ack
+
+
+brain publishes:
+-> daily reset: boards/cmd/reset_counter #used to reset data all boards
+-> board reset: boards/espname/cmd/reset_counter #used to reset data on one board
+-> reboot: boards/espname/cmd/reboot #used to reboot a single board
+-> full reboot: boards/cmd/reboot #used to reboot all boards
+-> update: boards/espname/cmd/update #used to update files on a single board
+-> mass_update: boards/cmd/update #used to update files on all boards
+-> last_state_update: boards/espname/cmd/last_state #provide board with its last state before shutdown
+
+
+possible future additions:
+->boards/espname/ota/version	
+->boards/espname/heartbeat	
+->boards/espname/cmd/config	
