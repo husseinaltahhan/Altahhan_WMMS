@@ -8,6 +8,7 @@ class SensorDetections():
         
         self.status = "ONLINE"
         self.last_state = "IDLE"
+        self.state = self.last_state
         self.welded = False
 
         self.non_welded_cylinders = 0
@@ -22,93 +23,112 @@ class SensorDetections():
         seperator = status.split(" ")
         self.total_production = int(seperator[1])
         self.loaded_cylinder = int(seperator[2])
+        print(self.loaded_cylinder, self.loaded_cylinder == int)
         self.last_state = seperator[0]
+        self.state = self.last_state
+        self.welded = seperator[3]
+
 
         
     def detect_entry_exit(self, publisher):
+        if self.state != self.last_state:
+            print("im getting abused", self.state, self.last_state)
+            self.last_state = self.state
+            print("i wonder if i changed", self.state, self.last_state)
+            publisher.publish_last_state(self.last_state, self.total_production, self.loaded_cylinder, self.welded)
+
+
         if self.last_state == "WELDING":
             return
         
         a = self.entrance.value()
         b = self.exit.value()
-        state = self.last_state
+            
+        self.state = self.last_state
+
         #print (state, a, b)
         # IDLE, A_TRIGGERED, B_TRIGGERED, A_B_TRIGGERED, B_A_TRIGGERED, B_ONLY, A_ONLY
-        if state == "IDLE":
+        if self.state == "IDLE":
             if a and not b:
-                state = "A_TRIGGERED"
-            elif b and not a:
-                state = "B_TRIGGERED"
+                self.state = "A_TRIGGERED"
+            elif self.loaded_cylinder > 0: 
+                if b and not a:
+                    self.state = "B_TRIGGERED"
 
-        elif state == "A_TRIGGERED":
+        elif self.state == "A_TRIGGERED":
             if a and b:
-                state = "AB_TRIGGERED"
+                self.state = "AB_TRIGGERED"
             elif not a and not b:
-                state = "IDLE"
+                self.state = "IDLE"
 
-        elif state == "B_TRIGGERED":
-            if a and b:
-                state = "BA_TRIGGERED"
-            elif not a and not b:
-                state = "IDLE"
-
-        elif state == "AB_TRIGGERED":
+        elif self.state == "AB_TRIGGERED":
             if not a and b:
-                state = "B_ONLY"
-            elif not a and not b: 
-                state = "IDLE"
-
-        elif state == "BA_TRIGGERED":
-            if not b and a:
-                state = "A_ONLY"
+                self.state = "B_ONLY"
             elif not a and not b:
-                state = "IDLE"
+                print ("SURPRITSEEEEE")
+                self.state = "IDLE"
 
-        elif state == "B_ONLY":
+        elif self.state == "B_ONLY":
             if not b and not a:
                 print ("entry detected") #ENTRY DETECTION
                 self.loaded_cylinder += 1
-                state = "IDLE"
+                self.state = "IDLE"
             elif b and a:
-                state = "AB_TRIGGERED"
+                self.state = "AB_TRIGGERED"
+        
+        if self.loaded_cylinder > 0:
+            if self.state == "B_TRIGGERED":
+                if a and b:
+                    self.state = "BA_TRIGGERED"
+                elif not a and not b:
+                    self.state = "IDLE"
+            
+            elif self.state == "BA_TRIGGERED":
+                if not b and a:
+                    self.state = "A_ONLY"
+                    print (self.state)
+                elif not a and not b:
+                    self.state = "IDLE"
+                
+            elif self.state == "A_ONLY":
+                if not b and not a:
+                    print ("exit detected") #EXIT DETECTION
+                    self.loaded_cylinder -= 1
+                    if self.welded:
+                        self.total_production += 1
+                        print(self.total_production)
+                        publisher.publish_counter("+1")
+                    else:
+                        self.non_welded_cylinders += 1
 
-        elif state == "A_ONLY":
-            if not b and not a:
-                print ("exit detected") #EXIT DETECTION
-                self.loaded_cylinder -= 1
-                if self.welded:
-                    self.total_production += 1
-                    publisher.publish_count("+1")
-                else:
-                    self.non_welded_cylinders += 1
-                state = "IDLE"
-                
-            elif b and a:
-                state = "BA_TRIGGERED"
-                
-        if state != self.last_state:
-            print("im getting abused", state, self.last_state)
-            self.last_state = state
-            print("i wonder if i changed", state, self.last_state)
-            publisher.publish_last_state(self.last_state, self.total_production, self.loaded_cylinder)
+                    self.state = "IDLE"
+                    if self.loaded_cylinder == 0:
+                        self.welded = False
+                    
+                elif b and a:
+                    state = "BA_TRIGGERED"
             
     
     def sensor_detect(self, publisher):
         self.detect_entry_exit(publisher)
+    
         
         #Detecting welding
         if self.loaded_cylinder > 0:
-            print(self.weld.value())
             if self.weld.value():
-                print (self.last_state)
-                if self.last_state != "WELDING":
-                    self.last_state = "WELDING"
+                if self.state != "WELDING":
+                    print("WELDING")
+                    self.state = "WELDING"
                     self.timer = time.time()
                     self.welded = False
-                    publisher.publish_last_state(self.last_state, self.total_production, self.loaded_cylinder)
+                    publisher.publish_last_state(self.last_state, self.total_production, self.loaded_cylinder, self.welded)
                     
                 if (time.time() - self.timer) >= 10:
                     self.welded = True
-            elif self.last_state == "WELDING":
-                self.last_state = "IDLE"
+                    
+            elif self.state == "WELDING":
+                print("HELOOOOOOOOOOOOOOO")
+                self.state = "IDLE"
+
+
 
