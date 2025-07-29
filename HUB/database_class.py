@@ -67,9 +67,9 @@ class Database:
         self.cursor.execute(
             """
             INSERT INTO production_log (board_id, log_date, cylinder_count)
-            VALUES (%s, CURRENT_DATE, 1)
+            VALUES (%s, CURRENT_DATE, 0)
             ON CONFLICT (board_id, log_date)
-            DO UPDATE SET cylinder_count = production_log.cylinder_count - 1;
+            DO UPDATE SET cylinder_count = GREATEST(production_log.cylinder_count - 1, 0);
             """, (board_id,))
         self.conn.commit()
 
@@ -145,7 +145,9 @@ class Database:
         result = self.cursor.fetchone()
         return result[0] if result else None
     
-db = Database("MQTT_System", "postgres", "altahhan2004!")
-
-#db.boardname_id_dict()
-#db.name_insert_message("esp32_001", "factory/machine1/status", "online")
+# Example usage (commented out):
+# from config import config
+# db_config = config.get_db_config()
+# db = Database(**db_config)
+# db.boardname_id_dict()
+# db.name_insert_message("esp32_001", "factory/machine1/status", "online")
