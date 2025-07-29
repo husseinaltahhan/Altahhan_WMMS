@@ -2,19 +2,29 @@ import pygame
 import sys
 import time
 from database_class import Database as DB
+from config import config
 
 # Initialize Pygame
 pygame.init()
 
-db = DB("MQTT_System", "postgres", "altahhan2004!")
+try:
+    db_config = config.get_db_config()
+    db = DB(**db_config)
+except Exception as e:
+    print(f"Failed to initialize database connection: {e}")
+    sys.exit(1)
 #db.create_daily_log_entries()
 
 #print (db.get_board_count(1))
 
 last_state = db.get_last_state(1)
-last_state = last_state.split(" ")
-total_production = last_state[1]
-loaded = last_state[2]
+if last_state and len(last_state.split(" ")) >= 3:
+    last_state_parts = last_state.split(" ")
+    total_production = last_state_parts[1]
+    loaded = last_state_parts[2]
+else:
+    total_production = "0"
+    loaded = "0"
 
 WIDTH, HEIGHT = 600, 400
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
