@@ -14,6 +14,8 @@ try:
 except Exception as e:
     print(f"Failed to initialize database connection: {e}")
     exit(1)
+print(board_id_lookup)
+print(topic_id_lookup)
 
 #defines a function thats triggered once when brain connects to broker
 def on_connect(client, userdata, flags, rc):
@@ -31,9 +33,9 @@ def on_message(client, userdata, msg):
         board_id = board_id_lookup[board_name]
         message = msg.payload.decode()
         topic = msg.topic
-        
+        print (f"Recieved message: {message} from board: {board_name} {board_id}")
         if topic not in topic_id_lookup:
-            print(f"Unknown topic: {topic}")
+            #print(f"Unknown topic: {topic}")
             return
             
         topic_id = topic_id_lookup[topic]

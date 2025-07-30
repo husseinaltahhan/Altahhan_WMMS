@@ -4,7 +4,7 @@ from umqtt_simple import MQTTClient
 import machine
 import urequests
 from publisher import BoardPublisher
-from sensor import SensorDetections
+from dt_method_1 import SensorDetections
 
 name = "esp32_b1"
 

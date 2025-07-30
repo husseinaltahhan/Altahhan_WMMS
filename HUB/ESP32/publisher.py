@@ -9,7 +9,7 @@ class BoardPublisher():
         self.client.publish(b"boards/esp32_b1/status", status, retain=True)
         
     def publish_last_state(self, state, total_production_count, current_cylinder):
-        self.client.publish(b"boards/esp32_b1/last_state", f"{state} {total_production_count} {current_cylinder}", retain=True)
+        self.client.publish(b"boards/esp32_b1/last_state", f"{state} {total_production_count} {current_cylinder} {self.welded}", retain=True)
 
     def publish_temp(self, temp):
         self.client.publish(b"boards/esp32_b1/temp", temp)
