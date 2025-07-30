@@ -53,6 +53,7 @@ Project Structure and Environment
 Key Conventions
 
 - Use descriptive and meaningful commit messages.
+- If you are unsure of how the system works, DO NOT MAKE ASSUMPTIONS. Ask me the questions your are unsure about and I will provide answers where necessary.
 - Ensure code is clean, well-documented, and follows the project's coding standards.
 - Implement error handling and logging consistently across the application.
 - DO NOT COMMIT WITHOUT MY PERMISSION; allow me to review the code changes, edit and I will then prompt you to commit if necessary.
