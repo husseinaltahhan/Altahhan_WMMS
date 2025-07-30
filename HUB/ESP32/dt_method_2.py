@@ -26,7 +26,7 @@ class GateWeldingDetector():
         self.welding_started = False
         self.welding_completed = False
         self.welding_start_time = 0
-        self.total_welding_time = 0
+        self.welding_duration = 0
         
         # Welding time configuration (seconds per cylinder size)
         self.welding_times = {
@@ -36,14 +36,13 @@ class GateWeldingDetector():
         }
         self.current_cylinder_size = 'medium'  # Default size
         
-        # Cylinder tracking based on welding time
-        self.cylinders_in_machine = []  # List of cylinder objects
-        self.cylinder_id_counter = 0    # Unique ID for each cylinder
-        self.expected_cylinders = 0     # Expected number based on welding time
-        
         # Timing for welding detection
         self.minimum_welding_time = 5   # Minimum time to consider as welding
         self.gate_debounce_time = 0.5   # seconds
+        
+        # Individual cylinder tracking for welding verification
+        self.cylinders_in_machine = []  # List of cylinder objects for welding verification
+        self.cylinder_id_counter = 0    # Unique ID for each cylinder
         
     def state_update(self, status):
         """Update system state from external status string"""
@@ -55,7 +54,7 @@ class GateWeldingDetector():
         self.welding_completed = separator[3] == "True"
         
     def create_cylinder(self, size='medium'):
-        """Create a new cylinder object with unique ID and size"""
+        """Create a new cylinder object with unique ID and size for welding verification"""
         self.cylinder_id_counter += 1
         return {
             'id': self.cylinder_id_counter,
@@ -66,12 +65,6 @@ class GateWeldingDetector():
             'welding_timer': 0,
             'entry_time': time.time()
         }
-        
-    def calculate_expected_cylinders(self, welding_duration):
-        """Calculate expected number of cylinders based on welding time"""
-        time_per_cylinder = self.welding_times[self.current_cylinder_size]
-        expected = int(welding_duration / time_per_cylinder)
-        return max(1, expected)  # At least 1 cylinder
         
     def detect_gate_and_welding_signals(self, publisher):
         """Main detection logic for gate signals and welding machine signals"""
@@ -94,36 +87,34 @@ class GateWeldingDetector():
             if self.gate_signal_count % 2 == 1:  # Odd count = gate opening
                 self.gate_is_open = True
                 print(f"Gate signal #{self.gate_signal_count} - Gate OPENING")
+                
             else:  # Even count = gate closing
                 self.gate_is_open = False
                 print(f"Gate signal #{self.gate_signal_count} - Gate CLOSING")
                 
-                # When gate closes, create expected number of cylinders based on previous welding time
-                if len(self.cylinders_in_machine) == 0 and self.total_welding_time > 0:
-                    self.expected_cylinders = self.calculate_expected_cylinders(self.total_welding_time)
-                    print(f"Creating {self.expected_cylinders} cylinders based on welding time: {self.total_welding_time}s")
-                    
-                    for i in range(self.expected_cylinders):
-                        new_cylinder = self.create_cylinder(self.current_cylinder_size)
-                        self.cylinders_in_machine.append(new_cylinder)
-                        self.loaded_cylinder += 1
-                        print(f"New cylinder {new_cylinder['id']} ({new_cylinder['size']}) created. Total cylinders: {len(self.cylinders_in_machine)}")
+                # Gate closed - create a new cylinder for tracking
+                new_cylinder = self.create_cylinder(self.current_cylinder_size)
+                self.cylinders_in_machine.append(new_cylinder)
+                self.loaded_cylinder += 1
+                print(f"New cylinder {new_cylinder['id']} ({new_cylinder['size']}) created. Total cylinders: {len(self.cylinders_in_machine)}")
         
         # Update welding machine state
         if welding_signal and not self.welding_started:
             print("Welding machine signal detected - welding started")
             self.welding_started = True
             self.welding_start_time = current_time
+            
             # Mark all cylinders in machine as welding started
             for cylinder in self.cylinders_in_machine:
                 if cylinder['state'] == 'ENTERED':
                     cylinder['welding_started'] = True
                     cylinder['welding_timer'] = current_time
                     cylinder['state'] = 'WELDING_IN_PROGRESS'
+                    print(f"Cylinder {cylinder['id']} welding started")
         
-        # Monitor welding process for all cylinders
+        # Monitor welding process for individual cylinders
         if self.welding_started:
-            self.total_welding_time = current_time - self.welding_start_time
+            self.welding_duration = current_time - self.welding_start_time
             
             for cylinder in self.cylinders_in_machine:
                 if cylinder['state'] == 'WELDING_IN_PROGRESS':
@@ -137,10 +128,25 @@ class GateWeldingDetector():
                             cylinder['state'] = 'WELDING_COMPLETED'
                             print(f"Cylinder {cylinder['id']} ({cylinder['size']}) welding completed after {cylinder_welding_time:.1f}s")
                     else:
-                        # Welding stopped prematurely
-                        cylinder['welding_completed'] = False
+                        # Welding stopped - mark as interrupted but keep tracking
                         cylinder['state'] = 'WELDING_INTERRUPTED'
-                        print(f"Cylinder {cylinder['id']} ({cylinder['size']}) welding interrupted")
+                        print(f"Cylinder {cylinder['id']} ({cylinder['size']}) welding paused after {current_time - cylinder['welding_timer']:.1f}s")
+                
+                # Handle welding resumption for interrupted cylinders
+                elif cylinder['state'] == 'WELDING_INTERRUPTED':
+                    if welding_signal:
+                        # Welding resumed - continue tracking from where it left off
+                        cylinder['state'] = 'WELDING_IN_PROGRESS'
+                        print(f"Cylinder {cylinder['id']} ({cylinder['size']}) welding resumed")
+                        
+                        # Check if total welding time (including previous session) is now sufficient
+                        total_welding_time = current_time - cylinder['welding_timer']
+                        required_time = self.welding_times[cylinder['size']]
+                        
+                        if total_welding_time >= required_time:
+                            cylinder['welding_completed'] = True
+                            cylinder['state'] = 'WELDING_COMPLETED'
+                            print(f"Cylinder {cylinder['id']} ({cylinder['size']}) welding completed after total time of {total_welding_time:.1f}s")
         
         # Process completed cylinders (exit detection based on gate signals)
         completed_cylinders = []
@@ -170,7 +176,7 @@ class GateWeldingDetector():
             self.state = "IDLE"
             self.welding_started = False
             self.welding_completed = False
-            self.total_welding_time = 0
+            self.welding_duration = 0
         elif any(cylinder['state'] == 'WELDING_IN_PROGRESS' for cylinder in self.cylinders_in_machine):
             self.state = "WELDING_IN_PROGRESS"
         elif any(cylinder['state'] == 'WELDING_COMPLETED' for cylinder in self.cylinders_in_machine):
