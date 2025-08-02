@@ -52,16 +52,15 @@ class GateWeldingDetector():
         """Determine cylinder size and count based on total welding time"""
         # Find the closest matching size based on welding time
         closest_size = None
-        min_difference = float('inf')
+        min_difference = 0.2
         
         for size, required_time in self.welding_times.items():
-            difference = abs(total_welding_time - required_time)
-            if difference < min_difference:
-                min_difference = difference
+            multiple = total_welding_time/required_time
+            if abs(multiple - round(multiple)) < min_difference:
                 closest_size = size
         
         # Only accept if within the margin of error (1 second)
-        if min_difference <= self.size_determination_margin:
+        if closest_size:
             # Calculate how many cylinders based on total time
             cylinder_count = int(total_welding_time / self.welding_times[closest_size])
             return closest_size, cylinder_count
@@ -93,14 +92,9 @@ class GateWeldingDetector():
                 self.gate_is_open = True
                 self.gate_signal_count += 1
                 print(f"Gate signal #{self.gate_signal_count} - Gate OPENED")
-                
-                # Check if this is the first gate opening (assume cylinders were loaded)
-                if self.gate_signal_count == 1:
-                    print("First gate opening - assuming cylinders were loaded")
-                    # Don't assume number, just note that cylinders were loaded
-                
+                print (self.welding_was_active, welding_signal)
                 # Check if this is gate opening after welding completed (welding pin = 0)
-                elif self.welding_was_active and not welding_signal:
+                if self.welding_was_active and not welding_signal:
                     print("Gate opened after welding completed - calculating total welding time")
                     
                     # Add current session time if welding was active
@@ -169,7 +163,7 @@ class GateWeldingDetector():
                     # Reset for next session
                     self.current_session_time = 0
                     self.welding_started = False
-                    self.welding_was_active = False
+                    #self.welding_was_active = False
         
         # Update overall system state
         if not self.welding_started and len(self.saved_welding_times) == 0:
