@@ -14,6 +14,7 @@ def serve_file(filename):
         
         # Check if file exists
         file_path = os.path.join("ota_files", filename)
+        print(file_path)
         if not os.path.exists(file_path):
             abort(404)
             
