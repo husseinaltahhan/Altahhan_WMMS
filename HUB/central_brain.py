@@ -24,19 +24,21 @@ def on_connect(client, userdata, flags, rc):
 
 #function that gets triggered when a message gets published to subscribed topic
 def on_message(client, userdata, msg):
+    global topic_id_lookup  # Declare as global to modify it
+    
     try:
         board_name = msg.topic.split("/")[1]
         if board_name not in board_id_lookup:
             print(f"Unknown board: {board_name}")
             return
-            
+        
         board_id = board_id_lookup[board_name]
         message = msg.payload.decode()
         topic = msg.topic
         print (f"Recieved message: {message} from board: {board_name} {board_id}")
         if topic not in topic_id_lookup:
-            #print(f"Unknown topic: {topic}")
-            return
+            db.insert_topic(topic)
+            topic_id_lookup = db.topic_id_dict()  # Now properly updates the global variable
             
         topic_id = topic_id_lookup[topic]
 
@@ -53,12 +55,15 @@ def on_message(client, userdata, msg):
                     client.publish(f"boards/{board_name}/cmd/last_state", last_state)
         
         if topic.endswith("/update_counter"):
-            if message == "+1":
-                db.increment_production_count(board_id)
+            counter_message = message.split(" ")
+            cylinder_count = counter_message[0]
+            cylinder_size = counter_message[1]
+            if cylinder_count[0] == "+":
+                db.increment_production_count(board_id, int(cylinder_count[1:]), cylinder_size)
                 production_count = db.get_board_production_count(board_id)
                 if production_count is not None:
                     print(production_count)
-            elif message == "-1":
+            elif cylinder_count[0] == "-":
                 db.decrement_production_count(board_id)
                 production_count = db.get_board_production_count(board_id)
                 if production_count is not None:

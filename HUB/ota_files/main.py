@@ -4,12 +4,12 @@ from umqtt_simple import MQTTClient
 import machine
 import urequests
 from publisher import BoardPublisher
-from dt_method_1 import SensorDetections
+from dt_method_2 import GateWeldingDetector
 
 name = "esp32_b1"
 
 # MQTT broker 
-broker_ip = '192.168.68.109'
+broker_ip = '192.168.68.102'
 
 
 subscribe = {
@@ -25,28 +25,29 @@ subscribe = {
 
 
 # Connect to MQTT broker
-client = MQTTClient("esp32_client", broker_ip, keepalive=15) #names the client and uses the broker_ip to connect
+client = MQTTClient(name , broker_ip, keepalive=15) #names the client and uses the broker_ip to connect
 client.set_last_will(topic=f"boards/{name}/status", msg="OFFLINE", retain=True, qos=0)
-ping_timer = time.time()
 client.connect()
+print ("connected to broker")
 
+ping_timer = time.time()
 
 #creatubg an instance of the publishing class to communicate with broker
 bp = BoardPublisher(client)
 
-sd = SensorDetections(25,32,13)
+gd = GateWeldingDetector(18,21)
 
 #Used to update files locally over the internet
 def ota_update():
     try:
-        file_list_url = "http://192.168.68.101:80/file_list.txt"
+        file_list_url = "http://192.168.68.102:80/file_list.txt"
         res = urequests.get(file_list_url)
         file_list = res.text.strip().splitlines()
         res.close()
 
         for filename in file_list:
             print (f"Updating {filename}...")
-            res = urequests.get(f"http://192.168.68.101:80/{filename}")
+            res = urequests.get(f"http://192.168.68.102:80/{filename}")
             with open(filename, "w") as f:
                 f.write(res.text)
             res.close()
@@ -69,9 +70,11 @@ def on_callback(topic, msg):
 
     if topic == subscribe["last_state"]:
         print(msg.decode())
-        sd.state_update(msg.decode())
-
-
+        gd.state_update(msg.decode())
+        
+    if topic == subscribe["reset_all"]:
+        gd.state_update("IDLE 0 0 False")
+ 
 def is_wifi_connected():
     wlan = network.WLAN(network.STA_IF)
     return wlan.isconnected()
@@ -135,7 +138,7 @@ bp.publish_status("ONLINE")
 
 # Stay connected and loop forever
 while True:
-    sd.sensor_detect(bp)
+    gd.sensor_detect(bp)
     if time.time() - ping_timer > 5:
         client.ping()
         ping_timer = time.time()

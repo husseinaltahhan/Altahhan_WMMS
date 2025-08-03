@@ -128,4 +128,7 @@ class SensorDetections():
                     
             elif self.state == "WELDING":
                 print("HELOOOOOOOOOOOOOOO")
-                self.state = "IDLE" 
+                self.state = "IDLE"
+
+
+

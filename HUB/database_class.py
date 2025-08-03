@@ -53,14 +53,44 @@ class Database:
             , (board_id, time.time(), cylinder_count))
         self.conn.commit()
 
-    def increment_production_count(self, board_id):
+    def increment_production_count(self, board_id, cylinder_count, cylinder_size):
+        # Construct dynamic SQL for the specific cylinder size column
+        column_name = cylinder_size
+        
+        # Validate that the column exists
         self.cursor.execute(
             """
-            INSERT INTO production_log (board_id, log_date, cylinder_count)
-            VALUES (%s, CURRENT_DATE, 1)
-            ON CONFLICT (board_id, log_date)
-            DO UPDATE SET cylinder_count = production_log.cylinder_count + 1;
-            """, (board_id,))
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'production_log' AND column_name = %s;
+            """, (column_name,)
+        )
+        
+        if not self.cursor.fetchone():
+            print(f"Warning: Column '{column_name}' does not exist in production_log table")
+            # Fallback to just updating cylinder_count
+            self.cursor.execute(
+                """
+                INSERT INTO production_log (board_id, log_date, cylinder_count)
+                VALUES (%s, CURRENT_DATE, 1)
+                ON CONFLICT (board_id, log_date)
+                DO UPDATE SET cylinder_count = production_log.cylinder_count + %s;
+                """, (board_id, cylinder_count)
+            )
+        else:
+            # Column exists, update both cylinder_count and the specific size column
+            self.cursor.execute(
+                """
+                INSERT INTO production_log (board_id, log_date, cylinder_count)
+                VALUES (%s, CURRENT_DATE, 1)
+                ON CONFLICT (board_id, log_date)
+                DO UPDATE SET 
+                    cylinder_count = production_log.cylinder_count + %s,
+                    "{}" = production_log."{}" + %s;
+                """.format(column_name, column_name), 
+                (board_id, cylinder_count, cylinder_count)
+            )
+        
         self.conn.commit()
 
     def decrement_production_count(self, board_id):
@@ -144,7 +174,18 @@ class Database:
             )
         result = self.cursor.fetchone()
         return result[0] if result else None
-    
+
+    def insert_topic(self, topic_name):
+        self.cursor.execute(
+            """
+            INSERT INTO topics (topic)
+            VALUES (%s)
+            ON CONFLICT (topic)
+            DO NOTHING;
+            """, (topic_name,)
+            )
+        self.conn.commit()
+
 # Example usage (commented out):
 # from config import config
 # db_config = config.get_db_config()
