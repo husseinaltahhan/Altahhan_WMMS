@@ -14,13 +14,13 @@ broker_ip = '192.168.68.102'
 
 subscribe = {
 "reset_all" : b"boards/cmd/reset_counter",
-"reset" : b"boards/esp32_b1/cmd/reset_counter",
+"reset" : b"boards/{name}/cmd/reset_counter",
 "reboot_all" : b"boards/cmd/reboot",
-"reboot" : b"boards/esp32_b1/cmd/reboot",
-"update" : b"boards/esp32_b1/cmd/update",
+"reboot" : b"boards/{name}/cmd/reboot",
+"update" : b"boards/{name}/cmd/update",
 "update_all" : b"boards/cmd/update",
-"status" : b"boards/esp32_b1/cmd/status",
-"last_state" : b"boards/esp32_b1/cmd/last_state"
+"status" : b"boards/{name}/cmd/status",
+"last_state" : b"boards/{name}/cmd/last_state"
 }
 
 
@@ -40,14 +40,14 @@ gd = GateWeldingDetector(18,21)
 #Used to update files locally over the internet
 def ota_update():
     try:
-        file_list_url = "http://192.168.68.102:80/file_list.txt"
+        file_list_url = f"http://{broker_ip}:80/file_list.txt"
         res = urequests.get(file_list_url)
         file_list = res.text.strip().splitlines()
         res.close()
 
         for filename in file_list:
             print (f"Updating {filename}...")
-            res = urequests.get(f"http://192.168.68.102:80/{filename}")
+            res = urequests.get(f"http://{broker_ip}:80/{filename}")
             with open(filename, "w") as f:
                 f.write(res.text)
             res.close()

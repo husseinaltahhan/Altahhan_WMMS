@@ -85,14 +85,15 @@ print("connected to client")
 mqtt_config = config.get_mqtt_config()
 client.connect(mqtt_config['host'], mqtt_config['port'], mqtt_config['keepalive'])
 
-
+daily_start = False
 
 def time_based_publisher():
     while True:
         now = datetime.datetime.now()
-        if now.hour == 7 and now.minute == 0:
+        if now.hour == 7 and 0 < now.minute < 30 and not daily_start:
             # Replace with your actual topic and message
             client.publish("boards/cmd/reset_counter", "Morning Reset", retain=True)
+            daily_start = True
             time.sleep(60)  # wait 60 seconds to avoid spamming
         time.sleep(1)  # check every second
 
