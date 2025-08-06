@@ -93,14 +93,12 @@ def setup_mqtt():
         bp.publish_status("ONLINE")
         
         print("MQTT connected successfully")
-        connection_established = True
         return True
         
     except Exception as e:
         print(f"MQTT connection failed: {e}")
         client = None
         bp.set_connection_status(False)
-        connection_established = False
         return False
 
 def is_wifi_connected():
@@ -130,27 +128,22 @@ def attempt_reconnection():
     """Attempt to reconnect WiFi and MQTT"""
     global reconnect_timer, connection_established
     
-    current_time = time.time()
-    
-    # Only attempt reconnection every 10 seconds
-    if current_time - reconnect_timer < 10:
-        return
-    
-    reconnect_timer = current_time
     print("Attempting reconnection...")
     
-    # First ensure WiFi is connected
-    if not is_wifi_connected():
-        print("WiFi disconnected, attempting reconnection...")
-        if not setup_wifi():
-            return
+    while not is_wifi_connected() or not is_mqtt_connected():
+        # First ensure WiFi is connected
+        if not is_wifi_connected():
+            print("WiFi disconnected, attempting reconnection...")
+            setup_wifi()
+        
+        # Then ensure MQTT is connected
+        elif not is_mqtt_connected():
+            print("MQTT disconnected, attempting reconnection...")
+            setup_mqtt()
+        
+        time.sleep(5)
     
-    # Then ensure MQTT is connected
-    if not is_mqtt_connected():
-        print("MQTT disconnected, attempting reconnection...")
-        if not setup_mqtt():
-            return
-    
+    connection_established = True
     print("Reconnection successful!")
 
 #Used to update files locally over the internet
@@ -206,8 +199,9 @@ def main_loop():
         try:
             # Check connections and attempt reconnection if needed
             if not is_wifi_connected() or not is_mqtt_connected():
-                connection_established = False
-                _thread.start_new_thread(attempt_reconnection, ())
+                if connection_established:
+                    connection_established = False
+                    _thread.start_new_thread(attempt_reconnection, ())
             
             # Always run sensor detection regardless of connection status
             gd.sensor_detect(bp)
@@ -237,9 +231,6 @@ def main_loop():
             else:
                 # Update publisher that we're offline
                 bp.set_connection_status(False)
-            
-            # Small delay to prevent tight loop
-            #time.sleep_ms(10)
             
         except Exception as e:
             print(f"Error in main loop: {e}")
