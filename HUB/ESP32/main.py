@@ -33,9 +33,9 @@ client = None
 bp = BoardPublisher()  # Create publisher without client initially
 gd = GateWeldingDetector(18, 21)
 ping_timer = time.time()
-reconnect_timer = time.time()
 connection_established = False
 
+#Attempts to connect to wifi
 def setup_wifi():
     """Setup WiFi connection with retry logic"""
     global connection_established
@@ -65,6 +65,7 @@ def setup_wifi():
         print('Failed to connect to WiFi')
         return False
 
+#Attempts to connect to the MQTT client and subscibes to required topics
 def setup_mqtt():
     """Setup MQTT connection with error handling"""
     global client, bp, connection_established
@@ -101,6 +102,7 @@ def setup_mqtt():
         bp.set_connection_status(False)
         return False
 
+#Checks if wifi is connected
 def is_wifi_connected():
     """Check if WiFi is connected"""
     try:
@@ -109,6 +111,7 @@ def is_wifi_connected():
     except:
         return False
 
+#Checks if MQTT client is connected
 def is_mqtt_connected():
     """Check if MQTT is connected"""
     global client
@@ -122,11 +125,10 @@ def is_mqtt_connected():
     except:
         return False
 
-
-
+#Main Function Responsible for Reconnection Runs both setup_wifi and setup_mqtt
 def attempt_reconnection():
     """Attempt to reconnect WiFi and MQTT"""
-    global reconnect_timer, connection_established
+    global connection_established
     
     print("Attempting reconnection...")
     
@@ -166,7 +168,7 @@ def ota_update():
     except Exception as e:
         print("OTA failed:", e)
 
-#called whenever a topic the client is subscribed to gets a new message
+#Called whenever a topic the client is subscribed to gets a new message
 def on_callback(topic, msg):
     try:
         print("Received: ", topic.decode(), msg.decode())
@@ -189,6 +191,7 @@ def on_callback(topic, msg):
     except Exception as e:
         print(f"Error in callback: {e}")
 
+#Main Loop
 def main_loop():
     """Main program loop with connection monitoring"""
     global ping_timer, connection_established, client, bp
