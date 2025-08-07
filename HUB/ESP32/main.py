@@ -11,7 +11,7 @@ from dt_method_2 import GateWeldingDetector
 name = "esp32_b1"
 
 # MQTT broker 
-broker_ip = '192.168.68.102'
+broker_ip = '192.168.68.103'
 
 # WiFi credentials
 WIFI_SSID = 'AL .TAHHAN_5G'
@@ -31,7 +31,7 @@ subscribe = {
 # Global variables for connection management
 client = None
 bp = BoardPublisher()  # Create publisher without client initially
-gd = GateWeldingDetector(18, 21)
+gd = GateWeldingDetector(18, 14)
 ping_timer = time.time()
 connection_established = False
 
@@ -93,6 +93,8 @@ def setup_mqtt():
         bp.set_client(client)
         bp.publish_status("ONLINE")
         
+        connection_established = True
+        
         print("MQTT connected successfully")
         return True
         
@@ -105,10 +107,11 @@ def setup_mqtt():
 #Checks if wifi is connected
 def is_wifi_connected():
     """Check if WiFi is connected"""
-    try:
-        wlan = network.WLAN(network.STA_IF)
-        return wlan.isconnected()
-    except:
+    
+    wlan = network.WLAN(network.STA_IF)
+    if wlan.isconnected():
+        return True
+    else:
         return False
 
 #Checks if MQTT client is connected
@@ -117,13 +120,8 @@ def is_mqtt_connected():
     global client
     if client is None:
         return False
-    
-    try:
-        # Try to ping the broker to test connection
-        client.ping()
+    else:
         return True
-    except:
-        return False
 
 #Main Function Responsible for Reconnection Runs both setup_wifi and setup_mqtt
 def attempt_reconnection():
@@ -188,6 +186,9 @@ def on_callback(topic, msg):
         if topic == subscribe["reset_all"]:
             gd.state_update("IDLE 0 0 False")
             
+        if topic == subscribe["reboot"]:
+            machine.reset()
+            
     except Exception as e:
         print(f"Error in callback: {e}")
 
@@ -204,6 +205,7 @@ def main_loop():
             if not is_wifi_connected() or not is_mqtt_connected():
                 if connection_established:
                     connection_established = False
+                    bp.set_connection_status(False)
                     _thread.start_new_thread(attempt_reconnection, ())
             
             # Always run sensor detection regardless of connection status
@@ -221,19 +223,14 @@ def main_loop():
                         ping_timer = current_time
                     except Exception as e:
                         print(f"Ping failed: {e}")
-                        connection_established = False
-                        bp.set_connection_status(False)
+                        client = None
                 
                 # Check for MQTT messages
                 try:
                     client.check_msg()
                 except Exception as e:
                     print(f"MQTT check_msg error: {e}")
-                    connection_established = False
-                    bp.set_connection_status(False)
-            else:
-                # Update publisher that we're offline
-                bp.set_connection_status(False)
+                    client = None
             
         except Exception as e:
             print(f"Error in main loop: {e}")
@@ -242,11 +239,6 @@ def main_loop():
 
 # Initial setup
 print("ESP32 Industrial Controller Starting...")
-
-# Initial connection attempts
-print("Setting up initial connections...")
-setup_wifi()
-setup_mqtt()
 
 # Start the main loop
 main_loop()

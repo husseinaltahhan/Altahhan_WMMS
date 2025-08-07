@@ -31,7 +31,7 @@ class GateWeldingDetector():
         
         # Welding session tracking
         self.welding_started = False
-        self.current_welding_start = 0
+        self.current_welding_start = 0.0
         self.saved_welding_times = []  # List of completed welding sessions
         self.current_session_time = 0
         self.welding_was_active = False  # Track if welding was active when gate opened
@@ -46,6 +46,8 @@ class GateWeldingDetector():
         self.last_state = separator[0]
         self.state = self.last_state
         
+        
+    
     def determine_cylinder_size_and_count(self, total_welding_time):
         """Determine cylinder size and count based on total welding time"""
         # Find the closest matching size based on welding time
@@ -60,22 +62,26 @@ class GateWeldingDetector():
         # Only accept if within the margin of error (1 second)
         if closest_size:
             # Calcu+late how many cylinders based on total time
-            cylinder_count = int(total_welding_time / self.welding_times[closest_size])
+            cylinder_count = int(round(total_welding_time / self.welding_times[closest_size]))
             return closest_size, cylinder_count
         else:
             return None, 0  # Size cannot be determined reliably
-        
+     
+     
+     
     def set_size_determination_margin(self, margin):
         """Set the margin of error for cylinder size determination (in seconds)"""
         self.size_determination_margin = margin
         print(f"Size determination margin set to: ±{margin} seconds")
+        
+        
         
     def detect_gate_and_welding_signals(self, publisher):
         """Main detection logic for gate signals and welding machine signals"""
         if self.state != self.last_state:
             print(f"State changed: {self.last_state} -> {self.state}")
             self.last_state = self.state
-            publisher.publish_last_state(self.last_state, self.total_production, f"{sum(self.welding_times)}")
+            publisher.publish_last_state(self.last_state, self.total_production, f"{sum(self.saved_welding_times)}")
         
         # Get current signal states
         gate_signal = self.gate.value()  # 1 = gate open, 0 = gate closed
@@ -125,7 +131,8 @@ class GateWeldingDetector():
                     
                     # Reset for next welding process
                     self.saved_welding_times.clear()
-                    self.current_session_time = 0
+                    total_welding_time = 0.0
+                    self.current_session_time = 0.0
                     self.welding_started = False
                     self.welding_was_active = False
                     print("Reset variables for next welding process")
@@ -142,7 +149,7 @@ class GateWeldingDetector():
             self.welding_started = True
             self.welding_was_active = True
             self.current_welding_start = current_time
-            self.current_session_time = 0
+            self.current_session_time = 0.0
         
         elif self.welding_started:
                 if welding_signal:
@@ -170,21 +177,16 @@ class GateWeldingDetector():
         else:
             self.state = "CYLINDERS_LOADED"
     
-    def set_cylinder_size(self, size):
-        """Set the current cylinder size for welding time calculations"""
-        if size in self.welding_times:
-            print(f"Default cylinder size set to: {size} ({self.welding_times[size]}s per cylinder)")
-        else:
-            print(f"Invalid cylinder size: {size}. Available sizes: {list(self.welding_times.keys())}")
+    
     
     def sensor_detect(self, publisher):
         """Main detection method called by external system"""
-        self.detect_gate_and_welding_signals(publisher)
+        try:
+            self.detect_gate_and_welding_signals(publisher)
+        except Exception as e:
+            print (f"Error in Detections: {e}")
         
-        # Publish current state if it changed
         if self.state != self.last_state:
-            publisher.publish_last_state(self.state, self.total_production, f"{sum(self.welding_times)}") 
-
-
-
-
+            print(f"State changed: {self.last_state} -> {self.state}")
+            self.last_state = self.state
+            publisher.publish_last_state(self.last_state, self.total_production, f"{sum(self.saved_welding_times)}")
