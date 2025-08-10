@@ -1,14 +1,19 @@
 import paho.mqtt.client as mqtt
 import time
-from database_class import Database as DB
+#from database_class import Database as DB
+from database_supabase import Database as DB
 import datetime
 import threading
 from config import config
 
 
+url: str = "https://cejlsybbdezcdmrgiqxv.supabase.co"
+key: str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNlamxzeWJiZGV6Y2RtcmdpcXh2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM3Mjc2MDIsImV4cCI6MjA2OTMwMzYwMn0.OyYVvM0zM7q8rTKklYGYKVfv7cm8R4twODVy_zxOwcU"
+client = None
+
 try:
-    db_config = config.get_db_config()
-    db = DB(**db_config)
+    #db_config = config.get_db_config()
+    db = DB(url= url,key= key)
     board_id_lookup = db.boardname_id_dict()
     topic_id_lookup = db.topic_id_dict()
 except Exception as e:
@@ -16,6 +21,7 @@ except Exception as e:
     exit(1)
 print(board_id_lookup)
 print(topic_id_lookup)
+
 
 #defines a function thats triggered once when brain connects to broker
 def on_connect(client, userdata, flags, rc):
@@ -75,15 +81,23 @@ def on_message(client, userdata, msg):
         print(f"Error processing message from {msg.topic}: {e}")
 
 
-client = mqtt.Client()
-client.on_connect = on_connect
-client.on_message = on_message
-print("connected to client")
+while True:
+    try:
+        client = mqtt.Client()
+        client.on_connect = on_connect
+        client.on_message = on_message
+        mqtt_config = config.get_mqtt_config()
+        client.connect(mqtt_config['host'], mqtt_config['port'], mqtt_config['keepalive'])
+        print("connected to client")
+        break
+    except Exception as e:
+        print(f"Failed to connect to MQTT broker: {e}")
+        print("Trying again in 5 seconds..")
+        time.sleep(5)
 
 
 
-mqtt_config = config.get_mqtt_config()
-client.connect(mqtt_config['host'], mqtt_config['port'], mqtt_config['keepalive'])
+
 
 daily_start = False
 

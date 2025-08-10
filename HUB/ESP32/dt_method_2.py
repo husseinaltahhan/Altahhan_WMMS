@@ -5,8 +5,8 @@ import math
 class GateWeldingDetector():
     def __init__(self, gate_pin, welding_machine_pin):
         # Initialize pins for electrical signals
-        self.gate = Pin(gate_pin, Pin.IN, Pin.PULL_DOWN)
-        self.welding_machine = Pin(welding_machine_pin, Pin.IN, Pin.PULL_DOWN)
+        self.gate = Pin(gate_pin, Pin.IN, Pin.PULL_UP)
+        self.welding_machine = Pin(welding_machine_pin, Pin.IN, Pin.PULL_UP)
         
         # System status
         self.status = "ONLINE"
@@ -76,6 +76,17 @@ class GateWeldingDetector():
         
         
         
+    def stable_read(self, samples=5, delay_ms=5):
+        v = None
+        for _ in range(samples):
+            nv = self.gate.value()
+            if v is None: v = nv
+            elif nv != v: return None  # unstable
+            time.sleep_ms(delay_ms)
+        return v
+        
+        
+        
     def detect_gate_and_welding_signals(self, publisher):
         """Main detection logic for gate signals and welding machine signals"""
         if self.state != self.last_state:
@@ -84,14 +95,18 @@ class GateWeldingDetector():
             publisher.publish_last_state(self.last_state, self.total_production, f"{sum(self.saved_welding_times)}")
         
         # Get current signal states
-        gate_signal = self.gate.value()  # 1 = gate open, 0 = gate closed
+        raw_gate = self.stable_read()
+        if raw_gate is not None:
+            gate_signal = self.gate.value()  # 1 = gate open, 0 = gate closed
+        else:
+            gate_signal = 0
         welding_signal = self.welding_machine.value()  # 1 = welding active, 0 = welding inactive
         current_time = time.time()
         
         # Detect gate state changes
-        if gate_signal != self.gate_is_open:
+        if not gate_signal != self.gate_is_open:
             # Gate state has changed
-            if gate_signal:
+            if not gate_signal:
                 # Gate is now OPEN (value = 1)
                 self.gate_is_open = True
                 self.gate_signal_count += 1
@@ -143,16 +158,23 @@ class GateWeldingDetector():
                 print(f"Gate signal #{self.gate_signal_count} - Gate CLOSED")
         
         # Monitor welding machine signal
-        if welding_signal and not self.welding_started:
-            # Welding has started (pin = 1)
-            print("Welding machine signal detected - welding started")
-            self.welding_started = True
-            self.welding_was_active = True
-            self.current_welding_start = current_time
-            self.current_session_time = 0.0
+        if not welding_signal and not self.welding_started:
+            start_time = time.ticks_ms()
+            
+            while time.ticks_diff(time.ticks_ms(), start_time) < 200:
+                if self.welding_started:
+                    break
+                
+            else:
+                # Welding has started (pin = 1)
+                print("Welding machine signal detected - welding started")
+                self.welding_started = True
+                self.welding_was_active = True
+                self.current_welding_start = current_time
+                self.current_session_time = 0.0
         
         elif self.welding_started:
-                if welding_signal:
+                if not welding_signal:
                     # Welding is ongoing - update current session time
                     self.current_session_time = current_time - self.current_welding_start
                     self.welding_was_active = True
@@ -172,7 +194,7 @@ class GateWeldingDetector():
         # Update overall system state
         if not self.welding_started and len(self.saved_welding_times) == 0:
             self.state = "IDLE"
-        elif self.welding_started and welding_signal:
+        elif self.welding_started and not welding_signal:
             self.state = "WELDING_IN_PROGRESS"
         else:
             self.state = "CYLINDERS_LOADED"
