@@ -1,4 +1,5 @@
 from supabase import create_client, Client
+from database_supabase import Database
 
 # Your Supabase credentials
 url: str = "https://cejlsybbdezcdmrgiqxv.supabase.co"

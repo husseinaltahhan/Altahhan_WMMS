@@ -11,59 +11,68 @@ from dt_method_2 import GateWeldingDetector
 name = "esp32_b1"
 
 # MQTT broker 
-broker_ip = '192.168.68.103'
+broker_ip = '172.17.176.1'
 
 # WiFi credentials
-WIFI_SSID = 'AL .TAHHAN_5G'
-WIFI_PASSWORD = 'altahhan2021'
+WIFI_SSID = 'WMMS'
+WIFI_PASSWORD = 'Altahhan2004!'
+
+# WiFi credentials
+#WIFI_SSID = 'AL.TAHHAN_5G'
+#WIFI_PASSWORD = 'altahhan2021'
 
 subscribe = {
-"reset_all" : b"boards/cmd/reset_counter",
-"reset" : b"boards/{name}/cmd/reset_counter",
-"reboot_all" : b"boards/cmd/reboot",
-"reboot" : b"boards/{name}/cmd/reboot",
-"update" : b"boards/{name}/cmd/update",
-"update_all" : b"boards/cmd/update",
-"status" : b"boards/{name}/cmd/status",
-"last_state" : b"boards/{name}/cmd/last_state"
+"reset_all" : f"boards/cmd/reset_counter",
+"reset" : f"boards/{name}/cmd/reset_counter",
+"reboot_all" : f"boards/cmd/reboot",
+"reboot" : f"boards/{name}/cmd/reboot",
+"update" : f"boards/{name}/cmd/update",
+"update_all" : f"boards/cmd/update",
+"status" : f"boards/{name}/cmd/status",
+"last_state" : f"boards/{name}/cmd/last_state"
 }
 
 # Global variables for connection management
 client = None
 bp = BoardPublisher()  # Create publisher without client initially
-gd = GateWeldingDetector(18, 14)
+gd = GateWeldingDetector(18, 21)
 ping_timer = time.time()
 connection_established = False
+_reconnect_running = False
 
 #Attempts to connect to wifi
 def setup_wifi():
-    """Setup WiFi connection with retry logic"""
-    global connection_established
-    
-    station = network.WLAN(network.STA_IF)
-    station.active(True)
-    
-    if station.isconnected():
-        print('WiFi already connected')
+    wlan = network.WLAN(network.STA_IF)
+    if not wlan.active():
+        wlan.active(True)
+    # performance mode (less power-save jitter)
+    try:
+        wlan.config(pm=0xa11140)
+    except:
+        pass
+
+    if wlan.isconnected():
         return True
+
+    # hard reset Wi‑Fi state before new attempt
+    try:
+        wlan.disconnect()
+    except:
+        pass
+    wlan.active(False)
+    time.sleep_ms(200)
+    wlan.active(True)
+
+    print('Connecting to WiFi:', WIFI_SSID)
+    wlan.connect(WIFI_SSID, WIFI_PASSWORD)
     
-    print(f'Connecting to WiFi: {WIFI_SSID}')
-    station.connect(WIFI_SSID, WIFI_PASSWORD)
-    
-    # Wait for connection with timeout
-    timeout = 15
-    while timeout > 0 and not station.isconnected():
-        print('Connecting to WiFi...')
-        timeout -= 1
-        time.sleep(1)
-    
-    if station.isconnected():
-        print('WiFi connected successfully')
-        print('Network config:', station.ifconfig())
-        return True
-    else:
-        print('Failed to connect to WiFi')
-        return False
+    for _ in range(30):  # ~30s
+        if wlan.isconnected():
+            print('WiFi connected:', wlan.ifconfig())
+            return True
+        time.sleep_ms(1000)
+    print('WiFi failed')
+    return False
 
 #Attempts to connect to the MQTT client and subscibes to required topics
 def setup_mqtt():
@@ -85,7 +94,7 @@ def setup_mqtt():
         # Subscribe to topics
         for topic in subscribe:
             try:
-                client.subscribe(subscribe[topic])
+                client.subscribe(subscribe[topic].encode())
             except Exception as e:
                 print(f"Failed to subscribe to {topic}: {e}")
         
@@ -125,26 +134,25 @@ def is_mqtt_connected():
 
 #Main Function Responsible for Reconnection Runs both setup_wifi and setup_mqtt
 def attempt_reconnection():
-    """Attempt to reconnect WiFi and MQTT"""
-    global connection_established
+    global _reconnect_running, connection_established, client
     
-    print("Attempting reconnection...")
+    if _reconnect_running:
+        return
+    _reconnect_running = True
+    try:
+        while not is_wifi_connected() or not is_mqtt_connected():
+            if not is_wifi_connected():
+                print ("Attempting Wifi Reconnection..")
+                setup_wifi()
+            elif not is_mqtt_connected():
+                print ("Attempting MQTT Reconnection..")
+                setup_mqtt()
+            time.sleep(3)
+        connection_established = True
+        print('Reconnection successful!')
     
-    while not is_wifi_connected() or not is_mqtt_connected():
-        # First ensure WiFi is connected
-        if not is_wifi_connected():
-            print("WiFi disconnected, attempting reconnection...")
-            setup_wifi()
-        
-        # Then ensure MQTT is connected
-        elif not is_mqtt_connected():
-            print("MQTT disconnected, attempting reconnection...")
-            setup_mqtt()
-        
-        time.sleep(5)
-    
-    connection_established = True
-    print("Reconnection successful!")
+    finally:
+        _reconnect_running = False
 
 #Used to update files locally over the internet
 def ota_update():
@@ -198,6 +206,7 @@ def main_loop():
     global ping_timer, connection_established, client, bp
     
     print("Starting main loop...")
+    connection_established = True
     
     while True: 
         try:
@@ -239,6 +248,8 @@ def main_loop():
 
 # Initial setup
 print("ESP32 Industrial Controller Starting...")
-
+print("Attempting Initial Connection")
+setup_wifi()
+setup_mqtt()
 # Start the main loop
 main_loop()
