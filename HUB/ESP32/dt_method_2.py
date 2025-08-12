@@ -110,10 +110,12 @@ class GateWeldingDetector():
                 self.gate_is_open = True
                 self.gate_signal_count += 1
                 print(f"Gate signal #{self.gate_signal_count} - Gate OPENED")
+                publisher.publish_log(f"Gate signal #{self.gate_signal_count} - Gate OPENED")
                 print (self.welding_was_active, welding_signal)
                 # Check if this is gate opening after welding completed (welding pin = 0)
-                if self.welding_was_active and not welding_signal:
+                if self.welding_was_active and welding_signal:
                     print("Gate opened after welding completed - calculating total welding time")
+                    publisher.publish_log("Gate opened after welding completed - calculating total welding time")
                     
                     # Add current session time if welding was active
                     if self.current_session_time > 0:
