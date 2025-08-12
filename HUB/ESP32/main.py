@@ -11,7 +11,8 @@ from dt_method_2 import GateWeldingDetector
 name = "esp32_b1"
 
 # MQTT broker 
-broker_ip = '172.17.176.1'
+broker_ip = 'broker.tplinkdns.com'
+#broker_ip = '192.168.0.152'
 
 # WiFi credentials
 WIFI_SSID = 'WMMS'
@@ -109,6 +110,7 @@ def setup_mqtt():
         
     except Exception as e:
         print(f"MQTT connection failed: {e}")
+        bp.publish_error(e)
         client = None
         bp.set_connection_status(False)
         return False
@@ -157,14 +159,14 @@ def attempt_reconnection():
 #Used to update files locally over the internet
 def ota_update():
     try:
-        file_list_url = f"http://{broker_ip}:80/file_list.txt"
+        file_list_url = f"http://broker.tplinkdns.com:80/file_list.txt"
         res = urequests.get(file_list_url)
         file_list = res.text.strip().splitlines()
         res.close()
 
         for filename in file_list:
             print(f"Updating {filename}...")
-            res = urequests.get(f"http://{broker_ip}:80/{filename}")
+            res = urequests.get(f"http://broker.tplinkdns.com:80/{filename}")
             with open(filename, "w") as f:
                 f.write(res.text)
             res.close()
@@ -173,23 +175,27 @@ def ota_update():
         machine.reset()
     except Exception as e:
         print("OTA failed:", e)
+        bp.publish_error(e)
 
 #Called whenever a topic the client is subscribed to gets a new message
 def on_callback(topic, msg):
     try:
         print("Received: ", topic.decode(), msg.decode())
         
+        topic = topic.decode()
+        msg = msg.decode()
+        
         if topic == subscribe["status"]:
-            if msg == b'stop':
+            if msg == 'stop':
                 print("stopping")
         
         if topic == subscribe["update"]:
-            if msg == b'update':
+            if msg == 'update':
                 ota_update()
 
         if topic == subscribe["last_state"]:
-            print(msg.decode())
-            gd.state_update(msg.decode())
+            print(msg)
+            gd.state_update(msg)
             
         if topic == subscribe["reset_all"]:
             gd.state_update("IDLE 0 0 False")
@@ -199,6 +205,7 @@ def on_callback(topic, msg):
             
     except Exception as e:
         print(f"Error in callback: {e}")
+        bp.publish_error(e)
 
 #Main Loop
 def main_loop():
@@ -232,6 +239,7 @@ def main_loop():
                         ping_timer = current_time
                     except Exception as e:
                         print(f"Ping failed: {e}")
+                        bp.publish_error(e)
                         client = None
                 
                 # Check for MQTT messages
@@ -239,10 +247,12 @@ def main_loop():
                     client.check_msg()
                 except Exception as e:
                     print(f"MQTT check_msg error: {e}")
+                    bp.publish_error(e)
                     client = None
             
         except Exception as e:
             print(f"Error in main loop: {e}")
+            bp.publish_error(e)
             # Continue running even if there's an error
             time.sleep(1)
 

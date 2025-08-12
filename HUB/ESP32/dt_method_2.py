@@ -24,9 +24,8 @@ class GateWeldingDetector():
         
         # Welding time configuration (seconds per cylinder size)
         self.welding_times = {
-            'small': 8,    # 8 seconds for small cylinders
-            'medium': 12,  # 12 seconds for medium cylinders
-            'large': 18    # 18 seconds for large cylinders
+            '120': 151,    # 8 seconds for small cylinders
+            '150': 189  # 12 seconds for medium cylinders
         }
         
         # Welding session tracking
@@ -43,7 +42,7 @@ class GateWeldingDetector():
         """Update system state from external status string"""
         separator = status.split(" ")
         self.total_production = int(separator[1])
-        self.last_state = separator[0]
+        self.last_state = str(separator[0])
         self.state = self.last_state
         
         
@@ -52,7 +51,7 @@ class GateWeldingDetector():
         """Determine cylinder size and count based on total welding time"""
         # Find the closest matching size based on welding time
         closest_size = None
-        min_difference = 0.2
+        min_difference = 0.11
         
         for size, required_time in self.welding_times.items():
             multiple = total_welding_time/required_time
@@ -156,12 +155,13 @@ class GateWeldingDetector():
                 # Gate is now CLOSED (value = 0)
                 self.gate_is_open = False
                 print(f"Gate signal #{self.gate_signal_count} - Gate CLOSED")
+                
         
         # Monitor welding machine signal
         if not welding_signal and not self.welding_started:
             start_time = time.ticks_ms()
             
-            while time.ticks_diff(time.ticks_ms(), start_time) < 200:
+            while time.ticks_diff(time.ticks_ms(), start_time) < 500:
                 if self.welding_started:
                     break
                 
@@ -189,7 +189,7 @@ class GateWeldingDetector():
                         # Reset for next session
                         self.current_session_time = 0
                         self.welding_started = False
-                        #self.welding_was_active = False
+                        self.welding_was_active = False
         
         # Update overall system state
         if not self.welding_started and len(self.saved_welding_times) == 0:
@@ -198,8 +198,7 @@ class GateWeldingDetector():
             self.state = "WELDING_IN_PROGRESS"
         else:
             self.state = "CYLINDERS_LOADED"
-    
-    
+       
     
     def sensor_detect(self, publisher):
         """Main detection method called by external system"""
@@ -207,6 +206,7 @@ class GateWeldingDetector():
             self.detect_gate_and_welding_signals(publisher)
         except Exception as e:
             print (f"Error in Detections: {e}")
+            publisher.publish_error(e)
         
         if self.state != self.last_state:
             print(f"State changed: {self.last_state} -> {self.state}")
