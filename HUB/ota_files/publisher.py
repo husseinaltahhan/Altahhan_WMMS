@@ -78,6 +78,14 @@ class BoardPublisher():
             payload=f"{count} {size}",
             message_type="counter"
         )
+    
+    def publish_log(self, payload):
+        self.safe_publish(
+            topic=b"boards/esp32_b1/log",
+            payload=f"{payload}",
+            message_time="log"
+        )
+
 
     def publish_status(self, status):
         self.safe_publish(
