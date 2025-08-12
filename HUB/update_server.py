@@ -36,5 +36,6 @@ def internal_error(error):
     return "Internal server error", 500
 
 if __name__ == '__main__':
-    flask_config = config.get_flask_config()
-    app.run(**flask_config)
+    #flask_config = config.get_flask_config()
+    #app.run(**flask_config)
+    app.run(host="0.0.0.0", port=80, debug=False, threaded=True)

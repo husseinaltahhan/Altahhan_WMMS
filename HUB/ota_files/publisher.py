@@ -115,7 +115,13 @@ class BoardPublisher():
             payload=ack,
             message_type="update_ack"
         )
-    
+    def publish_gate(self, gate_update):
+        self.safe_publish(
+            topic=b"boards/esp32_b1/gate_state",
+            payload=gate_update,
+            message_type="gate"
+        )
+
     def get_queue_size(self):
         """Get current queue size for monitoring"""
         return len(self.message_queue)
@@ -125,3 +131,5 @@ class BoardPublisher():
         cleared_count = len(self.message_queue)
         self.message_queue.clear()
         print(f"Cleared {cleared_count} queued messages")
+
+    
