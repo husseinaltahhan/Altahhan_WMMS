@@ -18,6 +18,10 @@ broker_ip = 'broker.tplinkdns.com'
 WIFI_SSID = 'WMMS'
 WIFI_PASSWORD = 'Altahhan2004!'
 
+# WiFi credentials
+#WIFI_SSID = 'AL.TAHHAN_5G'
+#WIFI_PASSWORD = 'altahhan2021'
+
 subscribe = {
 "reset_all" : f"boards/cmd/reset_counter",
 "reset" : f"boards/{name}/cmd/reset_counter",
@@ -152,6 +156,27 @@ def attempt_reconnection():
     finally:
         _reconnect_running = False
 
+#Used to update files locally over the internet
+def ota_update():
+    try:
+        file_list_url = f"http://broker.tplinkdns.com:80/file_list.txt"
+        res = urequests.get(file_list_url)
+        file_list = res.text.strip().splitlines()
+        res.close()
+
+        for filename in file_list:
+            print(f"Updating {filename}...")
+            res = urequests.get(f"http://broker.tplinkdns.com:80/{filename}")
+            with open(filename, "w") as f:
+                f.write(res.text)
+            res.close()
+        
+        print("Update complete. Rebooting...")
+        machine.reset()
+    except Exception as e:
+        print("OTA failed:", e)
+        bp.publish_error(e)
+
 #Called whenever a topic the client is subscribed to gets a new message
 def on_callback(topic, msg):
     try:
@@ -197,7 +222,10 @@ def main_loop():
                 if connection_established:
                     connection_established = False
                     bp.set_connection_status(False)
-                    attempt_reconnection()
+                    _thread.start_new_thread(attempt_reconnection, ())
+            
+            # Always run sensor detection regardless of connection status
+            gd.sensor_detect(bp)
             
             # Handle MQTT operations only if connected
             if connection_established and client:
@@ -221,7 +249,7 @@ def main_loop():
                     print(f"MQTT check_msg error: {e}")
                     bp.publish_error(e)
                     client = None
-        
+            
         except Exception as e:
             print(f"Error in main loop: {e}")
             bp.publish_error(e)
@@ -231,4 +259,7 @@ def main_loop():
 # Initial setup
 print("ESP32 Industrial Controller Starting...")
 print("Attempting Initial Connection")
+setup_wifi()
+setup_mqtt()
+# Start the main loop
 main_loop()
