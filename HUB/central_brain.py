@@ -4,12 +4,27 @@ import time
 from database_supabase import Database as DB
 import datetime
 import threading
+import os
+from dotenv import load_dotenv
 from config import config
 
+script_dir = os.path.dirname(os.path.abspath(__file__))
+env_path = os.path.join(script_dir, ".env")
 
-url: str = "https://cejlsybbdezcdmrgiqxv.supabase.co"
-key: str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNlamxzeWJiZGV6Y2RtcmdpcXh2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM3Mjc2MDIsImV4cCI6MjA2OTMwMzYwMn0.OyYVvM0zM7q8rTKklYGYKVfv7cm8R4twODVy_zxOwcU"
-client = None
+load_dotenv(env_path)
+
+url = os.getenv("SUPABASE_URL")
+key = os.getenv("SUPABASE_SERVICE_KEY")
+
+print(f"URL from getenv: {url}")
+print(f"Key from getenv: {key}")
+
+if not url or not key:
+    print("WTF IS HAPPENING")
+    # Additional debugging
+    print("All environment variables:")
+    for k, v in os.environ.items():
+        print(f"{k}: {v}")
 
 try:
     #db_config = config.get_db_config()
@@ -99,9 +114,9 @@ while True:
 
 
 
-daily_start = False
 
 def time_based_publisher():
+    daily_start = False
     while True:
         now = datetime.datetime.now()
         if now.hour == 7 and 0 < now.minute < 30 and not daily_start:

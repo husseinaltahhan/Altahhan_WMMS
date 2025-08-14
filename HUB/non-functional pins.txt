@@ -1,3 +1,0 @@
-non-functional pins:
-23 right side
-
