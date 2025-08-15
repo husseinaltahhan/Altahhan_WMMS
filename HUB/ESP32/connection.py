@@ -4,11 +4,12 @@ from umqtt_simple import MQTTClient
 
 
 class Connector():
-    def __init__(self, name, detection=None, publisher=None):
+    def __init__(self, name, detection=None, publisher=None, ota_update=None):
         self.name = name
         
         self.detection = detection
         self.publisher = publisher
+        self.ota_update = ota_update
         
         # MQTT broker 
         self.broker_ip = 'broker.tplinkdns.com'
@@ -100,8 +101,9 @@ class Connector():
             # Update publisher with new client
             publisher.set_client(self.client)
             publisher.publish_status("ONLINE")
+            publisher.set_connection_status(True)
             
-            connection_established = True
+            self.connection_established = True
             
             print("MQTT connected successfully")
             return True
@@ -128,7 +130,10 @@ class Connector():
             
             if topic == subscribe["update"]:
                 if msg == 'update':
-                    ota_update()
+                    if self.ota_update:
+                        self.ota_update()
+                    else:
+                        self.publisher.publish_error("Ota_update function not defiend in Connector Class")
 
             if topic == subscribe["last_state"]:
                 print(msg)
@@ -160,12 +165,11 @@ class Connector():
         else:
             return True
         
-    def attempt_reconnection(self):
-        _reconnect_running = self.reconnect_running
-        
-        if _reconnect_running:
+    def attempt_reconnection(self):        
+        if self.reconnect_running:
             return
-        _reconnect_running = True
+        
+        self.reconnect_running = True
         try:
             while not self.is_wifi_connected() or not self.is_mqtt_connected():
                 if not self.is_wifi_connected():
@@ -179,43 +183,41 @@ class Connector():
             print('Reconnection successful!')
         
         finally:
-            _reconnect_running = False
+            self.reconnect_running = False
 
     def run(self):
-        
-        client = self.client
         publisher = self.publisher
     
         try:
             # Check connections and attempt reconnection if needed
             if not self.is_wifi_connected() or not self.is_mqtt_connected():
-                if self.connection_established:
+                if not self.reconnect_running:
                     self.connection_established = False
                     publisher.set_connection_status(False)
                     self.attempt_reconnection()
             
             # Handle MQTT operations only if connected
-            if self.connection_established and client:
+            if self.connection_established and self.client:
                 # Update publisher connection status
                 publisher.set_connection_status(True)
                 # Handle MQTT ping
                 current_time = time.time()
                 if current_time - self.ping_timer > 5:
                     try:
-                        client.ping()
+                        self.client.ping()
                         self.ping_timer = current_time
                     except Exception as e:
                         print(f"Ping failed: {e}")
                         publisher.publish_error(e)
-                        client = None
+                        self.client = None
                 
                 # Check for MQTT messages
                 try:
-                    client.check_msg()
+                    self.client.check_msg()
                 except Exception as e:
                     print(f"MQTT check_msg error: {e}")
                     publisher.publish_error(e)
-                    client = None
+                    self.client = None
         except Exception as e:
             print(f"Error in main loop: {e}")
             publisher.publish_error(e)
