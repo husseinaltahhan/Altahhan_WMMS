@@ -1,232 +1,144 @@
-import time
-from machine import Pin
-from umqtt_simple import MQTTClient
-import machine
-import network
-import urequests
+import time, sys, gc
 import _thread
+import urequests
 from publisher import BoardPublisher
-from dt_method_2 import GateWeldingDetector
+from connection import Connector
 
 name = "esp32_b1"
 
-# MQTT broker 
-broker_ip = 'broker.tplinkdns.com'
-#broker_ip = '192.168.0.152'
-
-# WiFi credentials
-WIFI_SSID = 'WMMS'
-WIFI_PASSWORD = 'Altahhan2004!'
-
-subscribe = {
-"reset_all" : f"boards/cmd/reset_counter",
-"reset" : f"boards/{name}/cmd/reset_counter",
-"reboot_all" : f"boards/cmd/reboot",
-"reboot" : f"boards/{name}/cmd/reboot",
-"update" : f"boards/{name}/cmd/update",
-"update_all" : f"boards/cmd/update",
-"status" : f"boards/{name}/cmd/status",
-"last_state" : f"boards/{name}/cmd/last_state"
-}
+# ADDED: 24h burn-in window (milliseconds) and timer storage
+BURNIN_MS = 24 * 60 * 60 * 1000
+test_start_ms = None
 
 # Global variables for connection management
 client = None
 bp = BoardPublisher()  # Create publisher without client initially
-gd = GateWeldingDetector(18, 21)
-ping_timer = time.time()
-connection_established = False
-_reconnect_running = False
+network_connection = Connector(name, None, bp)
 
-#Attempts to connect to wifi
-def setup_wifi():
-    wlan = network.WLAN(network.STA_IF)
-    if not wlan.active():
-        wlan.active(True)
-    # performance mode (less power-save jitter)
-    try:
-        wlan.config(pm=0xa11140)
-    except:
-        pass
+running_state = "CURRENT"
+detection_running = False
+stop_signal = False
+mode_select = 1
+run_update = False
 
-    if wlan.isconnected():
-        return True
+def stop_detection():
+    global stop_signal
+    stop_signal = True
 
-    # hard reset Wi‑Fi state before new attempt
-    try:
-        wlan.disconnect()
-    except:
-        pass
-    wlan.active(False)
-    time.sleep_ms(200)
-    wlan.active(True)
-
-    print('Connecting to WiFi:', WIFI_SSID)
-    wlan.connect(WIFI_SSID, WIFI_PASSWORD)
-    
-    for _ in range(30):  # ~30s
-        if wlan.isconnected():
-            print('WiFi connected:', wlan.ifconfig())
-            return True
-        time.sleep_ms(1000)
-    print('WiFi failed')
-    return False
-
-#Attempts to connect to the MQTT client and subscibes to required topics
-def setup_mqtt():
-    """Setup MQTT connection with error handling"""
-    global client, bp, connection_established
+def run_detection(folder, publisher):
+    global stop_signal, detection_running, mode_select
+    if folder not in sys.path:
+        sys.path.insert(0, folder)
+    sys.modules.pop("detect_straight", None)
     
     try:
-        if client:
-            try:
-                client.disconnect()
-            except:
-                pass
+        import detect_straight
+        detector = detect_straight.GateWeldingDetector(18, 21)
+        network_connection.set_detection(detector)
+        detection_running = True
+        stop_signal = False
         
-        client = MQTTClient(name, broker_ip, keepalive=15)
-        client.set_last_will(topic=f"boards/{name}/status", msg="OFFLINE", retain=True, qos=0)
-        client.set_callback(on_callback)
-        client.connect()
-        
-        # Subscribe to topics
-        for topic in subscribe:
-            try:
-                client.subscribe(subscribe[topic].encode())
-            except Exception as e:
-                print(f"Failed to subscribe to {topic}: {e}")
-        
-        # Update publisher with new client
-        bp.set_client(client)
-        bp.publish_status("ONLINE")
-        
-        connection_established = True
-        
-        print("MQTT connected successfully")
-        return True
-        
+        while not stop_signal:
+            detector.main(publisher)
+            time.sleep_ms(5)
+            if gc.mem_free() < 8000:
+                gc.collect()
+    
     except Exception as e:
-        print(f"MQTT connection failed: {e}")
         bp.publish_error(e)
-        client = None
-        bp.set_connection_status(False)
-        return False
-
-#Checks if wifi is connected
-def is_wifi_connected():
-    """Check if WiFi is connected"""
-    
-    wlan = network.WLAN(network.STA_IF)
-    if wlan.isconnected():
-        return True
-    else:
-        return False
-
-#Checks if MQTT client is connected
-def is_mqtt_connected():
-    """Check if MQTT is connected"""
-    global client
-    if client is None:
-        return False
-    else:
-        return True
-
-#Main Function Responsible for Reconnection Runs both setup_wifi and setup_mqtt
-def attempt_reconnection():
-    global _reconnect_running, connection_established, client
-    
-    if _reconnect_running:
-        return
-    _reconnect_running = True
-    try:
-        while not is_wifi_connected() or not is_mqtt_connected():
-            if not is_wifi_connected():
-                print ("Attempting Wifi Reconnection..")
-                setup_wifi()
-            elif not is_mqtt_connected():
-                print ("Attempting MQTT Reconnection..")
-                setup_mqtt()
-            time.sleep(3)
-        connection_established = True
-        print('Reconnection successful!')
-    
+        if mode_select > 0:
+            mode_select -= 1
+        
     finally:
-        _reconnect_running = False
+        detection_running = False
+         
+def start_detection(mode_select, publisher):
+    global detection_running
+    if detection_running:
+        return
 
-#Called whenever a topic the client is subscribed to gets a new message
-def on_callback(topic, msg):
+    folder = "/app/current" if mode_select == 1 else "/app/new" if mode_select == 2 else "/app/old"
     try:
-        print("Received: ", topic.decode(), msg.decode())
-        
-        topic = topic.decode()
-        msg = msg.decode()
-        
-        if topic == subscribe["status"]:
-            if msg == 'stop':
-                print("stopping")
-        
-        if topic == subscribe["update"]:
-            if msg == 'update':
-                ota_update()
+        _thread.start_new_thread(run_detection, (folder, publisher))
+    except Exception as e:
+        if mode_select > 0:
+            mode_select -= 1
+        bp.publish_error("thread start failed: %r" % e)
+    
+def restart_detection(mode_select, timeout_ms=3000):
+    stop_detection()
+    
+    t0 = time.ticks_ms()
+    while detection_running and time.tick_diff(time.ticks_ms(), t0) < timeout_ms:
+        time.sleep_ms(50)
+    
+    start_detection(mode_select, bp)  
 
-        if topic == subscribe["last_state"]:
-            print(msg)
-            gd.state_update(msg)
+def ota_detection_update():
+    global run_update, mode_select, test_start_ms  # ADDED test_start_ms/global mode_select
+    try:
+        file_url = "http://broker.tplinkdns.com:80/detect_straight.py"
+        res = urequests.get(file_url)
+        update_file = "/app/new/detect_straight.py"
+        try:
+            # test compile here
+            compile(res.text, update_file, "exec")
+            with open(update_file, "w") as f:
+                f.write(res.text)
+            res.close()
             
-        if topic == subscribe["reset_all"]:
-            gd.state_update("IDLE 0 0 False")
-            
-        if topic == subscribe["reboot"]:
-            machine.reset()
+            run_update = True
+            mode_select = 2
+            test_start_ms = time.ticks_ms()   # ADDED: start burn-in timer
+            restart_detection(mode_select)
+        
+        except SyntaxError as e:
+            bp.publish_error("Syntax Error: %r", e)
+            run_update = False
+            mode_select = 1
             
     except Exception as e:
-        print(f"Error in callback: {e}")
-        bp.publish_error(e)
+        bp.publish_error("failed to write file: %r" % e)
+        run_update = False
 
-#Main Loop
+def update_successful():
+    global mode_select, run_update, test_start_ms  # ADDED: clear flags on success
+    
+    update_file = "/app/new/detect_straight.py"
+    current_file = "/app/current/detect_straight.py"
+    old_file = "/app/old/detect_straight.py"
+    
+    with open(current_file, "rb") as src, open(old_file, "wb") as dst:
+        dst.write(src.read())
+    with open(update_file, "rb") as src, open(current_file, "wb") as dst:
+        dst.write(src.read())
+    mode_select = 1
+    run_update = False           # ADDED
+    test_start_ms = None         # ADDED
+
+# Main Loop
 def main_loop():
     """Main program loop with connection monitoring"""
-    global ping_timer, connection_established, client, bp
-    
+    global bp, running_state, detection_running, test_start_ms  # ADDED test_start_ms
     print("Starting main loop...")
-    connection_established = True
     
-    while True: 
-        try:
-            # Check connections and attempt reconnection if needed
-            if not is_wifi_connected() or not is_mqtt_connected():
-                if connection_established:
-                    connection_established = False
-                    bp.set_connection_status(False)
-                    attempt_reconnection()
-            
-            # Handle MQTT operations only if connected
-            if connection_established and client:
-                # Update publisher connection status
-                bp.set_connection_status(True)
-                # Handle MQTT ping
-                current_time = time.time()
-                if current_time - ping_timer > 5:
-                    try:
-                        client.ping()
-                        ping_timer = current_time
-                    except Exception as e:
-                        print(f"Ping failed: {e}")
-                        bp.publish_error(e)
-                        client = None
-                
-                # Check for MQTT messages
-                try:
-                    client.check_msg()
-                except Exception as e:
-                    print(f"MQTT check_msg error: {e}")
-                    bp.publish_error(e)
-                    client = None
-        
-        except Exception as e:
-            print(f"Error in main loop: {e}")
-            bp.publish_error(e)
-            # Continue running even if there's an error
-            time.sleep(1)
+    while True:
+        network_connection.run()
+        if not detection_running:
+            start_detection(mode_select, bp)
+
+        # ADDED: burn-in promotion logic (consecutive 24h while in TESTING mode)
+        if mode_select == 2:
+            if detection_running:
+                if test_start_ms is None:
+                    test_start_ms = time.ticks_ms()
+                else:
+                    if time.ticks_diff(time.ticks_ms(), test_start_ms) >= BURNIN_MS:
+                        update_successful()
+                        # optionally restart detection on current, but not required here
+            else:
+                # detector not running -> reset the consecutive timer
+                test_start_ms = None
 
 # Initial setup
 print("ESP32 Industrial Controller Starting...")

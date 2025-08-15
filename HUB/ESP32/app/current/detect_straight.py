@@ -202,7 +202,7 @@ class GateWeldingDetector():
             self.state = "CYLINDERS_LOADED"
        
     
-    def sensor_detect(self, publisher):
+    def main(self, publisher):
         """Main detection method called by external system"""
         try:
             self.detect_gate_and_welding_signals(publisher)
