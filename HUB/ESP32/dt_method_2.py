@@ -90,6 +90,7 @@ class GateWeldingDetector():
         """Main detection logic for gate signals and welding machine signals"""
         if self.state != self.last_state:
             print(f"State changed: {self.last_state} -> {self.state}")
+            publisher.publish_log(f"State changed: {self.last_state} -> {self.state}")
             self.last_state = self.state
             publisher.publish_last_state(self.last_state, self.total_production, f"{sum(self.saved_welding_times)}")
         
@@ -154,6 +155,7 @@ class GateWeldingDetector():
                 self.welding_started = False
                 self.welding_was_active = False
                 print("Reset variables for next welding process")
+                publisher.publish_log("Reset variables for next welding process")
             else:
                 self.gate_is_open = False
                 print_gate = True
@@ -194,7 +196,7 @@ class GateWeldingDetector():
                         self.welding_started = False
         
         # Update overall system state
-        if not self.welding_started and len(self.saved_welding_times) == 0:
+        if not self.welding_started and self.saved_welding_times == []:
             self.state = "IDLE"
         elif self.welding_started and welding_signal:
             self.state = "WELDING_IN_PROGRESS"

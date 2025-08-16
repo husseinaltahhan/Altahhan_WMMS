@@ -83,7 +83,7 @@ class BoardPublisher():
         self.safe_publish(
             topic=b"boards/esp32_b1/log",
             payload=f"{payload}",
-            message_time="log"
+            message_type="log"
         )
 
 
