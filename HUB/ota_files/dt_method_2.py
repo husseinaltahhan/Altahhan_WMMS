@@ -191,7 +191,6 @@ class GateWeldingDetector():
                         # Reset for next session
                         self.current_session_time = 0
                         self.welding_started = False
-                        self.welding_was_active = False
         
         # Update overall system state
         if not self.welding_started and len(self.saved_welding_times) == 0:
