@@ -161,39 +161,39 @@ class GateWeldingDetector():
                 print_gate = True
 
          
-        
-        # Monitor welding machine signal
-        if welding_signal and not self.welding_started:
-            start_time = time.ticks_ms()
-            
-            while time.ticks_diff(time.ticks_ms(), start_time) < 500:
-                if self.welding_started:
-                    break
+        if self.get_is_open == False:
+            # Monitor welding machine signal
+            if welding_signal and not self.welding_started:
+                start_time = time.ticks_ms()
                 
-            else:
-                # Welding has started (pin = 1)
-                print("Welding machine signal detected - welding started")
-                self.welding_started = True
-                self.welding_was_active = True
-                self.current_welding_start = current_time
-                self.current_session_time = 0.0
-        
-        elif self.welding_started:
-                if welding_signal:
-                    # Welding is ongoing - update current session time
-                    self.current_session_time = current_time - self.current_welding_start
-                    self.welding_was_active = True
-                    print(f"Welding in progress: {self.current_session_time:.1f}s")
+                while time.ticks_diff(time.ticks_ms(), start_time) < 500:
+                    if self.welding_started:
+                        break
+                    
                 else:
-                    # Welding stopped but gate didn't open - welding interrupted
-                    if self.current_session_time > 0:
-                        self.saved_welding_times.append(self.current_session_time)
-                        print(f"Welding interrupted. Saved session: {self.current_session_time:.1f}s")
-                        print(f"Total saved time so far: {sum(self.saved_welding_times):.1f}s")
-                        
-                        # Reset for next session
-                        self.current_session_time = 0
-                        self.welding_started = False
+                    # Welding has started (pin = 1)
+                    print("Welding machine signal detected - welding started")
+                    self.welding_started = True
+                    self.welding_was_active = True
+                    self.current_welding_start = current_time
+                    self.current_session_time = 0.0
+            
+            elif self.welding_started:
+                    if welding_signal:
+                        # Welding is ongoing - update current session time
+                        self.current_session_time = current_time - self.current_welding_start
+                        self.welding_was_active = True
+                        print(f"Welding in progress: {self.current_session_time:.1f}s")
+                    else:
+                        # Welding stopped but gate didn't open - welding interrupted
+                        if self.current_session_time > 0:
+                            self.saved_welding_times.append(self.current_session_time)
+                            print(f"Welding interrupted. Saved session: {self.current_session_time:.1f}s")
+                            print(f"Total saved time so far: {sum(self.saved_welding_times):.1f}s")
+                            
+                            # Reset for next session
+                            self.current_session_time = 0
+                            self.welding_started = False
         
         # Update overall system state
         if not self.welding_started and self.saved_welding_times == []:
