@@ -96,71 +96,72 @@ class GateWeldingDetector():
         # Get current signal states
         raw_gate = self.stable_read()
         if raw_gate is not None:
-            gate_signal = self.gate.value()  # 1 = gate open, 0 = gate closed
+            gate_signal = self.gate.value() == 0  # 1 = gate open, 0 = gate closed
         else:
-            gate_signal = 0
-        welding_signal = self.welding_machine.value()  # 1 = welding active, 0 = welding inactive
+            gate_signal = 1
+        welding_signal = self.welding_machine.value() == 0  # 1 = welding active, 0 = welding inactive
         current_time = time.time()
         
+        print_gate = True
         # Detect gate state changes
-        if not gate_signal != self.gate_is_open:
             # Gate state has changed
-            if not gate_signal:
-                # Gate is now OPEN (value = 1)
-                self.gate_is_open = True
+        if gate_signal:
+            # Gate is now OPEN (value = 1)
+            self.gate_is_open = True
+            if print_gate:
                 self.gate_signal_count += 1
                 print(f"Gate signal #{self.gate_signal_count} - Gate OPENED")
                 publisher.publish_log(f"Gate signal #{self.gate_signal_count} - Gate OPENED")
                 print (self.welding_was_active, welding_signal)
-                # Check if this is gate opening after welding completed (welding pin = 0)
-                if self.welding_was_active and welding_signal:
-                    print("Gate opened after welding completed - calculating total welding time")
-                    publisher.publish_log("Gate opened after welding completed - calculating total welding time")
-                    
-                    # Add current session time if welding was active
-                    if self.current_session_time > 0:
-                        self.saved_welding_times.append(self.current_session_time)
-                        print(f"Added current session: {self.current_session_time:.1f}s")
-                    
-                    # Calculate total welding time
-                    total_welding_time = sum(self.saved_welding_times)
-                    print(f"Total welding time: {total_welding_time:.1f}s")
-                    
-                    # Determine cylinder size and count
-                    determined_size, cylinder_count = self.determine_cylinder_size_and_count(total_welding_time)
-                    
-                    if determined_size and cylinder_count > 0:
-                        print(f"Determined: {cylinder_count} {determined_size} cylinders (±{self.size_determination_margin}s margin)")
-                        
-                        # Update production
-                        self.total_production += cylinder_count
-                        
-                        print(f"Production updated: +{cylinder_count} cylinders. Total production: {self.total_production}")
-                        
-                        # Publish production count
-                        #for i in range(cylinder_count):
-                            #publisher.publish_counter("+1")
-                        publisher.publish_counter(f"+{cylinder_count}", determined_size)
-                    else:
-                        print(f"Could not determine cylinder size/count from {total_welding_time:.1f}s welding time")
-                        self.non_welded_cylinders += 1
-                    
-                    # Reset for next welding process
-                    self.saved_welding_times.clear()
-                    total_welding_time = 0.0
-                    self.current_session_time = 0.0
-                    self.welding_started = False
-                    self.welding_was_active = False
-                    print("Reset variables for next welding process")
+                print_gate = False
+            # Check if this is gate opening after welding completed (welding pin = 0)
+            if self.welding_was_active and not welding_signal:
+                print("Gate opened after welding completed - calculating total welding time")
+                publisher.publish_log("Gate opened after welding completed - calculating total welding time")
                 
+                # Add current session time if welding was active
+                if self.current_session_time > 0:
+                    self.saved_welding_times.append(self.current_session_time)
+                    print(f"Added current session: {self.current_session_time:.1f}s")
+                
+                # Calculate total welding time
+                total_welding_time = sum(self.saved_welding_times)
+                print(f"Total welding time: {total_welding_time:.1f}s")
+                
+                # Determine cylinder size and count
+                determined_size, cylinder_count = self.determine_cylinder_size_and_count(total_welding_time)
+                
+                if determined_size and cylinder_count > 0:
+                    print(f"Determined: {cylinder_count} {determined_size} cylinders (±{self.size_determination_margin}s margin)")
+                    
+                    # Update production
+                    self.total_production += cylinder_count
+                    
+                    print(f"Production updated: +{cylinder_count} cylinders. Total production: {self.total_production}")
+                    
+                    # Publish production count
+                    #for i in range(cylinder_count):
+                        #publisher.publish_counter("+1")
+                    publisher.publish_counter(f"+{cylinder_count}", determined_size)
+                else:
+                    print(f"Could not determine cylinder size/count from {total_welding_time:.1f}s welding time")
+                    self.non_welded_cylinders += 1
+                
+                # Reset for next welding process
+                self.saved_welding_times = []
+                total_welding_time = 0.0
+                self.current_session_time = 0.0
+                self.welding_started = False
+                self.welding_was_active = False
+                print("Reset variables for next welding process")
             else:
-                # Gate is now CLOSED (value = 0)
                 self.gate_is_open = False
-                print(f"Gate signal #{self.gate_signal_count} - Gate CLOSED")
-                
+                print_gate = True
+
+         
         
         # Monitor welding machine signal
-        if not welding_signal and not self.welding_started:
+        if welding_signal and not self.welding_started:
             start_time = time.ticks_ms()
             
             while time.ticks_diff(time.ticks_ms(), start_time) < 500:
@@ -176,7 +177,7 @@ class GateWeldingDetector():
                 self.current_session_time = 0.0
         
         elif self.welding_started:
-                if not welding_signal:
+                if welding_signal:
                     # Welding is ongoing - update current session time
                     self.current_session_time = current_time - self.current_welding_start
                     self.welding_was_active = True
@@ -195,7 +196,7 @@ class GateWeldingDetector():
         # Update overall system state
         if not self.welding_started and len(self.saved_welding_times) == 0:
             self.state = "IDLE"
-        elif self.welding_started and not welding_signal:
+        elif self.welding_started and welding_signal:
             self.state = "WELDING_IN_PROGRESS"
         else:
             self.state = "CYLINDERS_LOADED"
