@@ -19,6 +19,7 @@ class GateWeldingDetector():
         self.non_welded_cylinders = 0
         
         # Gate state tracking
+        self.print_gate = True
         self.gate_is_open = False
         self.gate_signal_count = 0
         
@@ -103,18 +104,17 @@ class GateWeldingDetector():
         welding_signal = self.welding_machine.value() == 0  # 1 = welding active, 0 = welding inactive
         current_time = time.time()
         
-        print_gate = True
         # Detect gate state changes
             # Gate state has changed
         if gate_signal:
             # Gate is now OPEN (value = 1)
             self.gate_is_open = True
-            if print_gate:
+            if self.print_gate:
                 self.gate_signal_count += 1
                 print(f"Gate signal #{self.gate_signal_count} - Gate OPENED")
                 publisher.publish_log(f"Gate signal #{self.gate_signal_count} - Gate OPENED")
                 print (self.welding_was_active, welding_signal)
-                print_gate = False
+                self.print_gate = False
             # Check if this is gate opening after welding completed (welding pin = 0)
             if self.welding_was_active and not welding_signal:
                 print("Gate opened after welding completed - calculating total welding time")
@@ -158,10 +158,10 @@ class GateWeldingDetector():
                 publisher.publish_log("Reset variables for next welding process")
             else:
                 self.gate_is_open = False
-                print_gate = True
+                self.print_gate = True
 
          
-        if self.get_is_open == False:
+        if self.gate_is_open == False:
             # Monitor welding machine signal
             if welding_signal and not self.welding_started:
                 start_time = time.ticks_ms()
